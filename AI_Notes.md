@@ -1,143 +1,259 @@
 # AI_NOTES.md
 
-## AI Tools Used
+## How I Used AI
 
-I used AI tools throughout the project primarily as an engineering assistant for architecture discussions, implementation guidance, debugging, security review, and documentation.
+I used ChatGPT (GPT-5.6) throughout the development of this project.
 
-The main AI tool I used was ChatGPT (GPT-5.6). I used it interactively rather than asking it to generate the entire project at once.
+I did not use AI to generate the entire application in one go. I mostly used it like a development partner: I would implement a part of the project, run it, share the error or code when something was not working, and then use the suggestions to decide what to change.
 
-My rough split was:
+I used AI mainly for:
 
-- **AI:** ~40–50% of implementation assistance — suggested project structure, code patterns, debugging approaches, Discord API details, security considerations, deployment troubleshooting, and documentation drafts.
-- **Me:** ~50–60% — made the final architecture and technology choices, wrote/modified the code, configured Discord/Render/Vercel/MongoDB, tested the application, investigated errors, and verified that the implementation actually worked.
+- Understanding the Discord HTTP Interactions flow
+- Deciding how to structure the Node/Express backend
+- Writing and improving parts of the backend
+- Debugging MongoDB, Express, Discord API, and deployment issues
+- Reviewing security-related parts such as Discord signature verification and JWT authentication
+- Building the React admin dashboard
+- Preparing the README and project documentation
 
-I treated AI-generated code as suggestions and tested the important parts locally and in production before relying on them.
-
----
-
-## Key Decisions I Made
-
-### 1. MongoDB instead of PostgreSQL
-
-I chose MongoDB with Mongoose for interaction storage.
-
-The main reason was simplicity and speed for this take-home project. The interaction records have a relatively straightforward document structure, and MongoDB Atlas provided an easy managed database option for the deployed Render backend.
-
-I also added a unique index on `discordInteractionId` so that Discord interaction IDs can be used for deduplication/idempotency.
-
-### 2. Discord HTTP Interactions instead of a traditional gateway bot
-
-I deliberately used Discord's HTTP Interactions endpoint rather than relying on a continuously running Discord gateway client.
-
-This matched the assignment requirement and allowed the backend to receive slash commands through a public HTTP endpoint. The backend verifies Discord's Ed25519 signature before processing requests.
-
-The production endpoint is:
-
-`POST /api/discord/interactions`
-
-### 3. Separate Discord, interaction, and admin services
-
-I kept the backend separated into controllers, services, models, middleware, and routes.
-
-For example:
-
-- `discord.service.js` handles communication back to Discord.
-- `interaction.service.js` handles interaction processing and persistence.
-- `admin.service.js` handles dashboard-related database operations.
-- Middleware handles Discord signature verification and admin JWT authentication.
-
-I chose this structure so that Discord-specific functionality would not be tightly coupled to the admin dashboard or database layer.
+The actual setup, configuration, testing, deployment, and final decisions were done by me.
 
 ---
 
-## Hardest Bug / Wrong Turn
+## How the Work Was Split
 
-The hardest issue was related to the Discord interaction flow and the distinction between receiving an interaction and responding to it correctly.
+I would roughly describe the split as:
 
-An early implementation treated the Discord request too much like a normal REST API request. AI guidance initially focused on returning a response after processing the command, including additional work such as storing the interaction and sending the `/report` notification to another Discord channel.
+**Me:** around 60%
 
-The problem was that Discord has a very short response window for interactions. If backend processing or the secondary Discord API request takes too long, Discord can consider the interaction response invalid or timed out.
+**AI:** around 40%
 
-I noticed this while testing the complete flow rather than assuming that a successful backend request meant the Discord interaction was fully handled.
+AI helped me move faster, especially when I was stuck on an implementation or unfamiliar API behavior. I was still responsible for deciding what to use, putting the pieces together, running the application, checking the results, and fixing things that did not work.
 
-I then separated the responsibilities more clearly:
+A typical workflow was:
 
-1. Verify the Discord signature.
-2. Identify the interaction/command.
-3. Persist the interaction.
-4. Process the command.
-5. Send the appropriate Discord response.
-6. Handle the secondary report notification separately.
+1. I decided what feature I wanted to build.
+2. I implemented the first version.
+3. I ran it locally or against the deployed service.
+4. If I got an error, I shared the relevant code/error with AI.
+5. AI suggested possible causes and fixes.
+6. I tested those suggestions.
+7. If the suggestion did not work, I went back and investigated the actual issue.
 
-This also made me pay more attention to failure handling instead of treating every downstream operation as if it were guaranteed to succeed.
-
-Another important lesson from this was that AI-generated code can look correct in isolation while still being inappropriate for a platform with strict timing requirements. Testing against the real Discord interaction endpoint exposed that distinction.
+This was especially useful because several problems only became obvious when testing the real Discord, MongoDB, Render, and Vercel environments.
 
 ---
 
-## Security Lessons From the AI-Assisted Development
+## Decisions I Made Myself
 
-AI also helped identify several security requirements that I verified during implementation:
+### 1. I chose MongoDB
 
-- Discord requests must be verified using `X-Signature-Ed25519` and `X-Signature-Timestamp`.
-- The raw request body must be preserved for signature verification.
-- Discord bot tokens and MongoDB credentials must remain server-side.
-- Admin APIs require JWT authentication.
-- Interaction IDs should be unique to prevent duplicate processing.
-- Secrets must not be committed to Git.
-- Production CORS should only allow the deployed frontend.
-- Sensitive interaction data and tokens should not be printed in server logs.
+I decided to use MongoDB instead of PostgreSQL.
 
-One mistake I caught during development was overly verbose logging of Discord interaction objects. Those objects can contain sensitive interaction information, so I replaced that with limited logging such as the command name and error information.
+The assignment mainly needed to store Discord interactions and display them in an admin dashboard. The data was relatively simple, and I was already comfortable working with Node.js and MongoDB.
+
+I used Mongoose and created an `Interaction` model with fields such as:
+
+- Discord interaction ID
+- command name
+- Discord user ID
+- username
+- report/input text
+- status
+- error message
+- timestamps
+
+I also made `discordInteractionId` unique because the same Discord interaction should not be processed multiple times.
+
+---
+
+### 2. I chose a simple Express backend structure
+
+I decided to keep the backend separated into:
+
+- routes
+- controllers
+- services
+- models
+- middleware
+- config
+
+I specifically kept `server.js` as the entry point rather than introducing another application entry file.
+
+The idea was to keep Discord-specific logic separate from database logic and admin-dashboard logic.
+
+For example, Discord communication is handled separately in `discord.service.js`, while database-related interaction processing is handled in `interaction.service.js`.
+
+---
+
+### 3. I chose to deploy the frontend and backend separately
+
+I deployed:
+
+- React/Vite frontend → Vercel
+- Node/Express backend → Render
+- Database → MongoDB Atlas
+
+I chose this because it was straightforward to deploy and allowed me to keep the Discord bot token, MongoDB connection string, and other secrets entirely on the backend.
+
+The frontend only receives the backend API URL through `VITE_API_URL`.
+
+---
+
+## The Hardest Problem I Ran Into
+
+The most frustrating part of the project was not actually writing the slash commands. It was getting the complete Discord → backend → database → Discord flow working correctly.
+
+Initially, I was thinking about the Discord interaction almost like a normal REST API request.
+
+For `/report`, the backend needed to:
+
+1. Receive the Discord interaction.
+2. Verify the Discord signature.
+3. Read the report text.
+4. Save it to MongoDB.
+5. Send a message to another Discord channel.
+6. Respond to the original Discord command.
+
+While debugging this, I had to understand that Discord has specific requirements around interaction requests, including signature verification and the response time allowed for an interaction.
+
+AI helped me identify these requirements, but I still had to test them against the real Discord application.
+
+One thing I also learned during this process was that logging the complete Discord interaction object is a bad idea. At one point I was logging the interaction while debugging, which could expose sensitive interaction information in server logs. I changed the logging to only include useful information such as the command name and error messages.
+
+---
+
+## A Real Deployment Problem
+
+Another issue that took time was MongoDB connectivity after deploying the backend.
+
+The application worked locally, but when I deployed the backend to Render, the backend initially could not connect to MongoDB Atlas.
+
+The problem was not with the Mongoose code itself. MongoDB Atlas was blocking the Render server because of its network access configuration.
+
+I found this by checking the Render deployment logs and then checking MongoDB Atlas Network Access.
+
+After allowing the deployed backend to connect, the Render service successfully connected to MongoDB.
+
+This was a good example of something that was difficult to diagnose from code alone. The application code looked fine, but the deployment environment was preventing the connection.
+
+---
+
+## Another Issue: CORS
+
+After deploying the frontend to Vercel, the dashboard could not initially communicate with the backend correctly.
+
+Locally, the frontend was running on:
+
+`http://localhost:5173`
+
+but the deployed frontend was:
+
+`https://discord-command-bot.vercel.app`
+
+I updated the backend CORS configuration and the Render `FRONTEND_URL` environment variable to use the deployed frontend URL.
+
+After redeploying, the dashboard was able to communicate with the backend correctly.
+
+---
+
+## What AI Got Wrong / Where I Had to Correct It
+
+AI was useful, but it was not always correct on the first attempt.
+
+A recurring pattern was that some suggested solutions were technically reasonable but did not exactly match the code I already had.
+
+For example, during the project I sometimes received suggestions involving different file names, different service functions, or a slightly different project structure than the one I had already created.
+
+Instead of copying the suggestion directly, I had to adapt it to my existing code.
+
+I also had cases where an implementation looked correct but did not work once I actually ran it. I would then provide the actual error/output back to AI and iterate on it.
+
+That was probably the biggest lesson for me:
+
+**AI was useful for generating possible solutions, but running and testing the application was what told me whether those solutions were actually correct.**
 
 ---
 
 ## What I Would Improve With More Time
 
-If I had more time, I would improve the system in several areas:
+If I had more time, I would improve the project in a few areas.
 
-### 1. Stronger asynchronous Discord processing
+### Better Discord interaction handling
 
-I would implement Discord's deferred response/follow-up pattern more thoroughly so that slower operations never risk exceeding Discord's interaction response window.
+I would make the interaction processing more robust around Discord's response-time requirements, using deferred responses/follow-ups where necessary.
 
-### 2. Better retry and failure handling
+### Better retry handling
 
-The report mirroring currently sends a notification to a second Discord channel. I would add a small job/queue mechanism with retries and explicit delivery status so that a temporary Discord API failure cannot result in a silently lost notification.
+If sending a report to the second Discord channel fails temporarily, I would add a retry mechanism or queue instead of relying on a single API request.
 
-### 3. Automated tests
+### Automated tests
+
+Most of my testing for this take-home was manual and end-to-end.
 
 I would add automated tests for:
 
 - Discord signature verification
-- expired/replayed requests
+- invalid signatures
 - duplicate interaction IDs
 - `/status`
 - `/report`
-- admin authentication
-- protected dashboard APIs
+- admin login
+- protected admin APIs
 
-### 4. More production-grade authentication
+### More dashboard features
 
-For a real production application, I would avoid keeping a single admin username/password in environment variables and instead use a proper user store with password hashing, account management, and stronger session/security controls.
+The current dashboard focuses on the requirements of the assignment. With more time, I would add:
 
-### 5. More dashboard functionality
-
-I would add pagination, filtering, date ranges, command statistics, and better error/status visualization to the admin dashboard.
+- pagination
+- filtering
+- date-based filtering
+- better error visualization
+- more detailed command statistics
 
 ---
 
-## Example AI Interaction
+## What I Learned From Using AI
 
-One of the useful prompts during development was:
+The biggest benefit of using AI was that it reduced the time I spent stuck on unfamiliar parts of the stack.
 
-> "Review this Discord interaction implementation against the Discord HTTP Interactions requirements. Check signature verification, replay protection, duplicate interactions, response timing, and failure handling. Point out anything that could fail in production."
+For example, I had to work with:
 
-I then used the response as a review checklist and verified the suggested changes against the actual Discord API behavior and my deployed application.
+- Discord HTTP interactions
+- Ed25519 signature verification
+- Discord REST APIs
+- MongoDB Atlas
+- Render deployment
+- Vercel deployment
+- JWT authentication
+- React/Vite
+
+Instead of spending a long time searching for an answer every time I got stuck, I could describe the problem and get several possible approaches quickly.
+
+However, I found that the important part was still understanding and testing the suggested solution.
+
+I didn't treat AI output as automatically correct. I used it as a second pair of eyes and then verified the result by running the application.
+
+---
+
+## Example of How I Used AI
+
+A typical interaction was along the lines of:
+
+> "This is my current Discord interaction service. `/report` is being received and stored in MongoDB, but I also need to send the report to another Discord channel. How should I structure this without putting the Discord API call directly inside the controller?"
+
+I would then take the suggested approach, adapt it to my existing project structure, run it, and fix any issues that appeared.
+
+This was more useful to me than asking AI to generate the entire project because I could understand what each part was doing and keep control over the implementation.
 
 ---
 
 ## Final Reflection
 
-The most useful role for AI in this project was not simply generating code. It was acting as a second engineering perspective during architecture decisions, debugging, security review, and documentation.
+AI played a significant role in helping me complete the project, but the development was iterative.
 
-The final implementation was still manually configured, tested, debugged, and deployed by me. In particular, Discord configuration, MongoDB Atlas, Render, Vercel, environment variables, slash-command registration, and end-to-end testing were verified against the actual deployed system rather than assumed to work based only on AI-generated code.
+I built the application feature by feature, tested it, encountered errors, and used AI to help investigate them.
+
+The final application was manually configured and tested across Discord, MongoDB Atlas, Render, and Vercel.
+
+The main thing I learned is that using AI effectively is not just about generating code. It is about being able to explain a problem clearly, evaluate the proposed solution, test it against the real system, and make the final engineering decision yourself.
