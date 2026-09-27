@@ -1,9 +1,20 @@
 const express = require("express");
+
 const env = require("./config/env");
+const connectDatabase = require("./config/db");
 
 const discordRoutes = require("./routes/discord.routes");
+const adminRoutes = require("./routes/admin.routes");
+
 
 const app = express();
+const cors = require("cors");
+
+app.use(
+  cors({
+    origin: env.frontendUrl,
+  })
+);
 
 app.use(
   express.json({
@@ -20,7 +31,14 @@ app.get("/", (req, res) => {
 });
 
 app.use("/api/discord", discordRoutes);
+app.use("/api/admin", adminRoutes);
 
-app.listen(env.port, () => {
-  console.log(`Server running on port ${env.port}`);
-});
+const startServer = async () => {
+  await connectDatabase();
+
+  app.listen(env.port, () => {
+    console.log(`Server running on port ${env.port}`);
+  });
+};
+
+startServer();

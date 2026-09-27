@@ -6,6 +6,7 @@ const interactionSchema = new mongoose.Schema(
       type: String,
       required: true,
       unique: true,
+      index: true,
     },
 
     type: {
@@ -15,18 +16,22 @@ const interactionSchema = new mongoose.Schema(
 
     commandName: {
       type: String,
+      default: null,
     },
 
     discordUserId: {
       type: String,
+      default: null,
     },
 
     username: {
       type: String,
+      default: null,
     },
 
     inputText: {
       type: String,
+      default: null,
     },
 
     status: {
@@ -34,13 +39,20 @@ const interactionSchema = new mongoose.Schema(
       enum: ["received", "processing", "success", "failed"],
       default: "received",
     },
+
+    errorMessage: {
+      type: String,
+      default: null,
+    },
   },
   {
     timestamps: true,
   }
 );
 
-module.exports = mongoose.model(
+const Interaction = mongoose.model(
   "Interaction",
   interactionSchema
 );
+
+module.exports = Interaction;
