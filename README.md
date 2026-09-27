@@ -35,7 +35,7 @@ https://discord-command-bot.vercel.app/
 | Field | Value |
 |---|---|
 | Username | `admin` |
-| Password | `<YOUR_ADMIN_PASSWORD>` |
+| Password | `Admin@123` |
 
 > **Note:** Replace `<YOUR_ADMIN_PASSWORD>` with the actual configured admin password before submitting this README.
 
