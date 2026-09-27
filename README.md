@@ -37,7 +37,7 @@ https://discord-command-bot.vercel.app/
 | Username | `admin` |
 | Password | `Admin@123` |
 
-> **Note:** Replace `<YOUR_ADMIN_PASSWORD>` with the actual configured admin password before submitting this README.
+
 
 The password is stored as an environment variable and is not committed to the repository.
 
